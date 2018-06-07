@@ -1,6 +1,7 @@
 package mwang.soundapp;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
@@ -9,12 +10,17 @@ import android.media.AudioTrack;
 
 import android.media.MediaRecorder;
 import android.os.Handler;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -25,8 +31,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+    private static final String TAG = "AudioApp";
 
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
     private static String mFileName = null;
@@ -51,6 +59,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Button mRecordButton;
     private Button mPlayButton;
+    private Button mSRButton;
+    private TextView mText;
 
     private final Handler handler = new Handler();
     private final Runnable runner = new Runnable() {
@@ -59,6 +69,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             stopPlaying();
         }
     };
+
+    private SpeechRecognizer sr;
 
     //Requesting permission to record audio
     private boolean permissionToRecordAccepted = false;
@@ -129,7 +141,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     // Records audio and writes to a file
     private void writeAudioDataToFile() {
         // Write the output audio in byte
-        System.out.println("Recording");
         short sData[] = new short[BufferElement2Rec];
 
         DataOutputStream os = null;
@@ -155,7 +166,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         // Flush and close
         try {
-            System.out.println("closing file");
             os.flush();
             os.close();
         } catch (IOException e) {
@@ -200,7 +210,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         // Close stream
         try {
-            System.out.println("closing file");
             is.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -234,6 +243,56 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mStartPlaying = true;
     }
 
+    private class SRListener implements RecognitionListener {
+        @Override
+        public void onReadyForSpeech(Bundle bundle) {
+            Log.d(TAG, "onReadyForSpeech");
+        }
+
+        @Override
+        public void onBeginningOfSpeech() {
+            Log.d(TAG, "onBeginningOfSpeech");
+        }
+
+        @Override
+        public void onRmsChanged(float v) {
+            Log.d(TAG, "onRMSChanged");
+        }
+
+        @Override
+        public void onBufferReceived(byte[] bytes) {
+            Log.d(TAG, "onBufferReceived");
+        }
+
+        @Override
+        public void onEndOfSpeech() {
+            Log.d(TAG, "onEndOfSpeech");
+        }
+
+        @Override
+        public void onError(int i) {
+            Log.d(TAG, "onError" + i);
+            mText.setText("error " + i);
+        }
+
+        @Override
+        public void onResults(Bundle results) {
+            Log.d(TAG, "onResults");
+            ArrayList data = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            mText.setText(String.valueOf(data.get(0)));
+        }
+
+        @Override
+        public void onPartialResults(Bundle bundle) {
+            Log.d(TAG, "onPartialResults");
+        }
+
+        @Override
+        public void onEvent(int i, Bundle bundle) {
+            Log.d(TAG, "onEvent");
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -242,13 +301,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         mRecordButton = (Button) findViewById(R.id.record_button);
         mRecordButton.setOnClickListener(this);
-
         mPlayButton = (Button) findViewById(R.id.play_button);
         mPlayButton.setOnClickListener(this);
+        mSRButton = (Button) findViewById(R.id.sr_button);
+        mSRButton.setOnClickListener(this);
+        mText = (TextView) findViewById(R.id.text);
 
         mFileName = getExternalCacheDir().getAbsolutePath();
         mFileName += "/audiorecordtest.pcm";
-        System.out.println(mFileName);
+
+        sr = SpeechRecognizer.createSpeechRecognizer(this);
+        sr.setRecognitionListener(new SRListener());
 
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
     }
@@ -272,6 +335,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch(v.getId()) {
             case R.id.record_button: {
+
                 onRecord(mStartRecording);
                 if (mStartRecording)
                     mRecordButton.setText("Stop Recording");
@@ -287,6 +351,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 else
                     mPlayButton.setText("Play");
                 mStartPlaying = !mStartPlaying;
+                break;
+            }
+            case R.id.sr_button: {
+                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, "en-US");
+                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+                mText.setText("Recording...");
+                sr.startListening(intent);
                 break;
             }
         }
